@@ -25,7 +25,7 @@ UNITY_PATH=/Applications/Unity201702f3/Unity.app/Contents/MacOS/Unity
 #游戏程序路径#
 PROJECT_PATH=$1
 #打开unity工程#
-$UNITY_PATH -projectPath $PROJECT_PATH  -executeMethod GPCommon.QuickBuild.SetBuildConfig outputFolderPath-$2 bundleIdentifier-$3 productName-$4 bundleVersionCode-$5 bundleVersion-$6 gameName-$7 buildComment-$8 -quit
+$UNITY_PATH -batchmode -executeMethod GPCommon.QuickBuild.SetBuildConfig outputFolderPath-$2 bundleIdentifier-$3 productName-$4 bundleVersionCode-$5 bundleVersion-$6 gameName-$7 buildComment-$8 -quit
 echo "打开unity工程"
 #设置unity参数#
 #$UNITY_PATH -executeMethod QuickBuild.SetOutputFolderPath outputFolderPath-$2
