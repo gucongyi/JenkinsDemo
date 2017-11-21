@@ -1,1 +1,0 @@
-%1 -projectPath %2\Main\TestJenkins -executeMethod JenkinsAdapter.Build -quit -batchmode -logFile build.log

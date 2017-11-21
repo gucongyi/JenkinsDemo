@@ -1,0 +1,13 @@
+{
+    "group": "G02",
+    "libs": ["libstdc++.6.0.9.tbd"],
+    "frameworks": [],
+    "headerpaths": [],                    
+    "files": [],
+    "folders": [],    
+    "excludes": ["^.*.meta$", "^.*.mdown$", "^.*.pdf$"],
+    "compiler_flags": [],
+    "linker_flags": ["-ObjC"],
+    "plist":{"Privacy - Microphone Usage Description":"Microphone"},
+	"enable_bitCode":false
+}

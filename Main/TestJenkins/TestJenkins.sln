@@ -1,7 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2017
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestJenkins", "TestJenkins.csproj", "{A54724E5-E605-06A5-26CF-48BA6E578D30}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestJenkins.Editor", "TestJenkins.Editor.csproj", "{6DE61FA4-6AD4-0F9F-F36C-D2D882209B3C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestJenkins.Editor.Plugins", "TestJenkins.Editor.Plugins.csproj", "{14C2477C-B1A8-D257-AA02-B45A23CF3111}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -9,10 +13,18 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A54724E5-E605-06A5-26CF-48BA6E578D30}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A54724E5-E605-06A5-26CF-48BA6E578D30}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A54724E5-E605-06A5-26CF-48BA6E578D30}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A54724E5-E605-06A5-26CF-48BA6E578D30}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6DE61FA4-6AD4-0F9F-F36C-D2D882209B3C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6DE61FA4-6AD4-0F9F-F36C-D2D882209B3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6DE61FA4-6AD4-0F9F-F36C-D2D882209B3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6DE61FA4-6AD4-0F9F-F36C-D2D882209B3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14C2477C-B1A8-D257-AA02-B45A23CF3111}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14C2477C-B1A8-D257-AA02-B45A23CF3111}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14C2477C-B1A8-D257-AA02-B45A23CF3111}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14C2477C-B1A8-D257-AA02-B45A23CF3111}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

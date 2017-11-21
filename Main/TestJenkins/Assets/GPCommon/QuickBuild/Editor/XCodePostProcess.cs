@@ -1,0 +1,41 @@
+using UnityEngine;
+using UnityEditor;
+using UnityEditor.Callbacks;
+using UnityEditor.XCodeEditor;
+using System.IO;
+
+namespace GPCommon
+{
+    public static class XCodePostProcess
+    {
+        [PostProcessBuild(999)]
+        public static void OnPostProcessBuild(BuildTarget target, string pathToBuiltProject)
+        {
+            if (target != BuildTarget.iOS)
+            {
+                Debug.LogWarning("Target is not iPhone. XCodePostProcess will not run");
+                return;
+            }
+
+            // Create a new project object from build target
+            XCProject project = new XCProject(pathToBuiltProject);
+
+            // Find and run through all projmods files to patch the project.
+            // Please pay attention that ALL projmods files in your project folder will be excuted!
+            string[] files = Directory.GetFiles(Application.dataPath, "*.projmods", SearchOption.AllDirectories);
+            foreach (string file in files)
+            {
+                UnityEngine.Debug.Log("ProjMod File: " + file);
+                project.ApplyMod(file);
+            }
+
+            // Finally save the xcode project
+            project.Save();
+
+            if (QuickBuild.ExportIPA)
+                QuickBuild.ExportLastBuildIpa();
+        }
+
+
+    }
+}

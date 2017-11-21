@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7eaf46f8bc7f0724e8bf95752a1c6501, type: 3}
+  m_Name: Development
+  m_EditorClassIdentifier: 
+  DefineList:
+  - Name: DEBUG_CONSOLE
+    Desc: "\u63A7\u5236\u53F0\u663E\u793A"
+    Enable: 1
+  - Name: UNIT_TEST
+    Desc: "\u5355\u5143\u6D4B\u8BD5"
+    Enable: 1
+  - Name: ENABLE_ROBOT_LOGGER
+    Desc: "\u673A\u5668\u4EBA\u65E5\u5FD7"
+    Enable: 0
+  - Name: PLAYER_STATE_DEBUGGING
+    Desc: "\u73A9\u5BB6\u72B6\u6001\u673A\u5C4F\u5E55\u663E\u793A"
+    Enable: 1
+  - Name: ENABLE_NETWORK_LOG
+    Desc: "\u7F51\u7EDC\u529F\u80FD\u65E5\u5FD7"
+    Enable: 1
+  - Name: DEEP_MESSAGE_LOG
+    Desc: "\u6253\u5370\u51FA\u534F\u8BAE\u8BE6\u7EC6\u5185\u5BB9"
+    Enable: 1
+  - Name: MESSAGE_LOG_FILTER
+    Desc: "\u5C4F\u853D\u67D0\u4E9B\u9AD8\u9891\u534F\u8BAE\u7684\u6253\u5370"
+    Enable: 1
+  - Name: NETWORK_FLOW_WATCHER
+    Desc: "\u6D41\u91CF\u7EDF\u8BA1\u663E\u793A"
+    Enable: 1
+  - Name: ENABLE_MESSAGE_LOG
+    Desc: "\u7F51\u7EDC\u534F\u8BAE\u65E5\u5FD7"
+    Enable: 1
+  - Name: DISABLE_UNITY_DEBUG
+    Desc: "\u5C4F\u853DUnity\u6253\u5370"
+    Enable: 0
+  - Name: FIXED_PUBLIC_SERVER
+    Desc: "\u9501\u5B9A\u9009\u62E9\u5916\u7F51\u670D\u52A1\u5668"
+    Enable: 0
+  - Name: NEWBEEGUIDE_ALWAYS_STEPONE
+    Desc: "\u6BCF\u6B21\u767B\u5F55\u65F6,\u603B\u662F\u91CD\u65B0\u624B\u5F15\u5BFC\u7B2C\u4E00\u6B65\u5F00\u59CB"
+    Enable: 0
+  - Name: NEWBEEGUIDE_DISABLE
+    Desc: "\u7981\u7528\u65B0\u624B\u5F15\u5BFC"
+    Enable: 0
+  BundleIdentifier: com.huanyz.g02
+  ProductName: "\u7981\u5FCC\u4E4B\u795E"
+  BundleVersionCode: 0
+  BundleVersion: 1.0
+  BuildOptionInt: 0
+  IsLock: 0
+  PackageName: "\u7981\u5FCC\u4E4B\u795E_2017-11-13_16-50-20"
