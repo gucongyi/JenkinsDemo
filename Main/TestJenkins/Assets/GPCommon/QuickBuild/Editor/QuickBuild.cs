@@ -160,6 +160,7 @@ namespace GPCommon
         //by gcy
         public static void SetBuildConfig()
         {
+			SetOutputFolderPath();
             BuildConfig config = new BuildConfig();
             config.BundleIdentifier = FindParam("bundleIdentifier");
             config.ProductName = FindParam("productName");
@@ -170,6 +171,7 @@ namespace GPCommon
             string comment = FindParam("buildComment");
             QuickBuild.ExportIPA = true;
             BuildIOS(config, comment);
+			OpenLastBuildFolder();
         }
 
 
