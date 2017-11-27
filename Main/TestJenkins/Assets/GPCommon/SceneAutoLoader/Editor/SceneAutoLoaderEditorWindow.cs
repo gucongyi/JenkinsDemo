@@ -30,7 +30,7 @@ public class SceneAutoLoaderEditorWindow : EditorWindow
 
 	void OnApplicationQuit()
 	{
-		Debug.Log("SceneAutoLoaderEditorWindow: Application ending");
+		//Debug.Log("SceneAutoLoaderEditorWindow: Application ending");
 	}
 	/// <summary>
 	/// Show "Active" checkbox in editor window

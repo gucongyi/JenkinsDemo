@@ -593,7 +593,7 @@ namespace XUPorterJSON {
         protected static bool serializeValue( object value, StringBuilder builder )
         {
             // Type t = value.GetType();
-            // Debug.Log("type: " + t.ToString() + " isArray: " + t.IsArray);
+            // //Debug.Log("type: " + t.ToString() + " isArray: " + t.IsArray);
 
             if( value == null )
             {

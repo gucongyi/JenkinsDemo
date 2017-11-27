@@ -14,8 +14,8 @@ MonoBehaviour:
   DefineList: []
   BundleIdentifier: com.huanyz.g01
   ProductName: TestJenkins
-  BundleVersionCode: 0
-  BundleVersion: 0
+  BundleVersionCode: 1
+  BundleVersion: 1.0
   BuildOptionInt: 0
   IsLock: 0
-  PackageName: TestJenkins_2017-11-21_19-30-54_JenkinsDemoPakage
+  PackageName: TestJenkins_2017-11-23_14-56-38

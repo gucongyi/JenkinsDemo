@@ -49,7 +49,8 @@ namespace GPCommon
         public static string OutputFolder
         {
             get { return EditorPrefs.GetString("QuickBuild_OutputFolder"); }
-            private set { EditorPrefs.SetString("QuickBuild_OutputFolder", value); }
+            // private
+             set { EditorPrefs.SetString("QuickBuild_OutputFolder", value); }
         }
 
         public static bool ExportIPA
@@ -61,21 +62,36 @@ namespace GPCommon
         [MenuItem("QuickBuild/Log LastBuild Info")]
         public static void LogLastBuildInfo()
         {
-            Debug.Log(LastBuildPath);
-            Debug.Log(LastBuildName);
+            //Debug.Log(LastBuildPath);
+            //Debug.Log(LastBuildName);
         }
 
         [MenuItem("QuickBuild/Export LastBuild IPA")]
         public static void ExportLastBuildIpa()
         {
-            Debug.Log("Exporting IPA....");
-
-            var exportCommand = string.Format("{0} {1} {2}", ExportIpaShellPath,
-                LastBuildPath, LastBuildName);
+            Debug.Log("==================Exporting IPA....");
+            var dateStr = System.DateTime.Now.ToString("_M_d_h_m");
+            var fileName = CurrBuildData.文件名 + (CurrBuildData.文件名加日期 ? dateStr : "");
+            string ipaName= fileName;
+            Debug.Log("===================currIsCustomPackName:" + currIsCustomPackName);
+            if (QuickBuild.currIsCustomPackName)
+            {
+                ipaName = QuickBuild.currCustomPackName;
+                Debug.Log("===================currCustomPackName:"+ currCustomPackName);
+            }
+            Debug.Log("===================currEnableDevBuild:" + currEnableDevBuild);
+            if (QuickBuild.currEnableDevBuild)
+            {
+                ipaName = ipaName + "_Debug";
+            }
+            Debug.Log("===================ipaName:" + ipaName);
+            var exportCommand = string.Format("{0} {1} {2} {3}", ExportIpaShellPath,
+                LastBuildPath, LastBuildName, ipaName);//第四个参数是ipa Name
+            
 
             string output;
             EditorHelper.ExecuteBashScript(exportCommand, out output);
-
+            Debug.Log("=========================Gen IPA Log:"+ output);
             File.WriteAllText(ExportLogPath, output);
         }
 
@@ -157,20 +173,83 @@ namespace GPCommon
             OutputFolder = FindParam("outputFolderPath");
         }
 
+        public static void GetShellParam()
+        {
+            currEnableDevBuild = EnableDevBuild();
+            currIsCustomPackName = IsCustomPackName();
+            currCustomPackName = GetCustomPackName();
+        }
+
+        //by gcy
+        public static BuildOptions GetBuildOptions()
+        {
+            BuildOptions options;
+
+            var enableDevBuild = EnableDevBuild();
+            if (enableDevBuild)
+            {
+                options = BuildOptions.CompressWithLz4HC | BuildOptions.Development | BuildOptions.ConnectWithProfiler|BuildOptions.ConnectToHost;
+            }
+            else
+            {
+                options = BuildOptions.CompressWithLz4HC;
+            }
+            return options;
+        }
+        //by gcy
+        private static bool currEnableDevBuild;
+        public static bool EnableDevBuild()
+        {
+            bool enableDevBuild = Boolean.Parse(QuickBuild.FindParam("EnableDevelopBuild"));
+            return enableDevBuild;
+        }
+
+        private static bool currIsCustomPackName;
+        public static bool IsCustomPackName()
+        {
+            bool isCustomPackName = Boolean.Parse(QuickBuild.FindParam("IsCustomPackName"));
+            return isCustomPackName;
+        }
+
+        private static string currCustomPackName;
+        public static string GetCustomPackName()
+        {
+            string customPackName = QuickBuild.FindParam("CustomPackName");
+            return customPackName;
+        }
+
+        private static BuildData CurrBuildData = null;
+        public static void SetBuildData(BuildData data)
+        {
+            CurrBuildData = data;
+        }
+
         //by gcy
         public static void SetBuildConfig()
         {
-			SetOutputFolderPath();
+            //SetOutputFolderPath();
+            //         BuildConfig config = new BuildConfig();
+            //         config.BundleIdentifier = FindParam("bundleIdentifier");
+            //         config.ProductName = FindParam("productName");
+            //         config.BundleVersionCode = int.Parse(FindParam("bundleVersionCode"));
+            //         config.BundleVersion = FindParam("bundleVersion");
+            //         config.BuildOptionInt = 0;
+            //         config.PackageName= FindParam("gameName");
+            //         string comment = FindParam("buildComment");
+            BuildData data=new BuildData();
+            data.文件名 = "G01";
+            data.BundleIdentifier = "com.huanyz.g01";
+            data.productName = "TestJenkins";
+            data.BundleVersion = "1.0";
+            data.bundleVersionCode = 1;
+            SetBuildData(data);
             BuildConfig config = new BuildConfig();
-            config.BundleIdentifier = FindParam("bundleIdentifier");
-            config.ProductName = FindParam("productName");
-            config.BundleVersionCode = int.Parse(FindParam("bundleVersionCode"));
-            config.BundleVersion = FindParam("bundleVersion");
-            config.BuildOptionInt = 0;
-            config.PackageName= FindParam("gameName");
-            string comment = FindParam("buildComment");
+            config.BundleIdentifier = CurrBuildData.BundleIdentifier;
+            config.ProductName = CurrBuildData.productName;
+            config.BundleVersionCode = CurrBuildData.bundleVersionCode;
+            config.BundleVersion = CurrBuildData.BundleVersion;
             QuickBuild.ExportIPA = true;
-            BuildIOS(config, comment);
+            BuildIOS(config, "");
 			OpenLastBuildFolder();
         }
 
@@ -219,6 +298,7 @@ namespace GPCommon
             PlayerSettings.applicationIdentifier = config.BundleIdentifier;
             PlayerSettings.productName = config.ProductName;
             PlayerSettings.bundleVersion = config.BundleVersion;
+            PlayerSettings.iOS.appleDeveloperTeamID = "WBHCY56HJ5";
 
             if (schema.OnPreBuild != null)
                 schema.OnPreBuild(config);
@@ -232,23 +312,22 @@ namespace GPCommon
             // Save as last configuration before building
             LastBuildName = packageName;
             LastBuildPath = packagePath;
-
+            GetShellParam();
             // Building...
-            var result = BuildPipeline.BuildPlayer(GetBuildScenes(), packagePath, schema.BuildTarget,
-                config.GetBuildOption());
+            var result = BuildPipeline.BuildPlayer(GetBuildScenes(), packagePath, schema.BuildTarget,GetBuildOptions());
 
             if (string.IsNullOrEmpty(result))
             {
-                Debug.Log("Build complete!");
+                //Debug.Log("Build complete!");
 
                 // RevealInFinder after build complete
                 EditorUtility.RevealInFinder(packagePath);
             }
             else
             {
-                Debug.Log("Build error occur!");
+                //Debug.Log("Build error occur!");
 
-                Debug.LogError(result);
+                //Debug.LogError(result);
             }
         }
 
@@ -281,7 +360,7 @@ namespace GPCommon
             PlayerSettings.SetScriptingDefineSymbolsForGroup(IOSBuildSchema.BuildTargetGroup,
                 defineStr);
 
-            Debug.Log(string.Format("Current define symbol: {0}", defineStr));
+            //Debug.Log(string.Format("Current define symbol: {0}", defineStr));
         }
 
         public static bool SyncAllDefineSymbols()

@@ -106,7 +106,7 @@ namespace GPCommon
 
         public static void ExecuteBashScript(string command, out string output)
         {
-            Debug.Log(command);
+            //Debug.Log(command);
 
             var process = new Process
             {
@@ -122,7 +122,7 @@ namespace GPCommon
             process.Start();
 
             output = process.StandardOutput.ReadToEnd();
-            Debug.Log(output);
+            //Debug.Log(output);
 
             process.WaitForExit();
         }

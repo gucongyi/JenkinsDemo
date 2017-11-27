@@ -24,7 +24,7 @@
 /// IEnumerator MyAwesomeTask()
 /// {
 ///     while(true) {
-///         Debug.Log("Logcat iz in ur consolez, spammin u wif messagez.");
+///         //Debug.Log("Logcat iz in ur consolez, spammin u wif messagez.");
 ///         yield return null;
 ////    }
 /// }

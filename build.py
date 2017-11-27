@@ -1,10 +1,11 @@
 ﻿#!/bin/sh
 
 #参数判断  
-if [ $# != 8 ];then 
-    echo "需要8个参数。 参数是游戏必要信息"  
+if [ $# != 4 ];then 
+    echo "Error:参数个数不一致，打包失败"  
     exit     
-fi  
+fi 
+
 
 #Param $1 projectPath /Users/hyz/JenkinsDemo/Main/TestJenkins
 #Param $2 outputFolderPath /Users/hyz/Desktop
@@ -23,15 +24,17 @@ fi
 UNITY_PATH=/Applications/Unity201702f3/Unity.app/Contents/MacOS/Unity
 
 #游戏程序路径#
-PROJECT_PATH=$1
-#打开unity工程#
-$UNITY_PATH -batchmode -executeMethod GPCommon.QuickBuild.SetBuildConfig outputFolderPath-$2 bundleIdentifier-$3 productName-$4 bundleVersionCode-$5 bundleVersion-$6 gameName-$7 buildComment-$8 -quit
-echo "打开unity工程"
+#PROJECT_PATH=$1
+#打开unity工程#-batchmode
+$UNITY_PATH -projectPath $1 -executeMethod BuildSteps.SetBuildConfig EnableDevelopBuild-$2 IsCustomPackName-$3 CustomPackName-$4 -logFile /Users/hyz/Desktop/IOSG01/G01PackIPA.txt -quit
+#打出unity pack log
+cat /Users/hyz/Desktop/IOSG01/G01PackIPA.txt
+#echo "打开unity工程"
 #设置unity参数#
 #$UNITY_PATH -executeMethod QuickBuild.SetOutputFolderPath outputFolderPath-$2
-echo "设置输出路径成功:"$2
+#echo "设置输出路径成功:"$2
 #$UNITY_PATH -executeMethod QuickBuild.SetBuildConfig bundleIdentifier-$3 productName-$4 bundleVersionCode-$5 bundleVersion-$6 gameName-$7 buildComment-$8
-echo "设置BundleConfig成功:"$3"|"$4"|"$5"|"$6"|"$7"|"$8
+#echo "设置BundleConfig成功:"$3"|"$4"|"$5"|"$6"|"$7"|"$8
 echo "生成xcode工程完毕"
 echo "生成ipa完成"
 #打开生成的ipa文件夹#

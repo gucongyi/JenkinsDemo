@@ -49,7 +49,7 @@ namespace GPCommon
             if (ui.State == UIState.Hidden)
             {
 #if DEBUG_UI
-                Debug.Log("ShowUI: " + ui);
+                //Debug.Log("ShowUI: " + ui);
 #endif
 
                 ui.PlayShownSound();
@@ -84,7 +84,7 @@ namespace GPCommon
             if (ui.State == UIState.Show)
             {
 #if DEBUG_UI
-                Debug.Log("HideUI: " + ui);
+                //Debug.Log("HideUI: " + ui);
 #endif
 
                 ui.PlayHidenSound();

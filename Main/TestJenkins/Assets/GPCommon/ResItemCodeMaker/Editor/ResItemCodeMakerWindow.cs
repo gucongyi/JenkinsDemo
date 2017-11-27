@@ -178,7 +178,7 @@ namespace GPCommon
 
         public void Execute()
         {
-            Debug.Log("GPCommon-UpdateItemCode start");
+            //Debug.Log("GPCommon-UpdateItemCode start");
 
             GetCurrentConfig();
 
@@ -192,13 +192,13 @@ namespace GPCommon
                 // Write file
                 File.WriteAllText(task.CodeFilePath, codeBuilder.ToString(), Encoding.UTF8);
 
-                Debug.LogFormat("from {0} make {1} updated", task.FolderFilePath, task.CodeFilePath);
+                //Debug.LogFormat("from {0} make {1} updated", task.FolderFilePath, task.CodeFilePath);
             }
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log("GPCommon-UpdateItemCode complete");
+            //Debug.Log("GPCommon-UpdateItemCode complete");
         }
     }
 }

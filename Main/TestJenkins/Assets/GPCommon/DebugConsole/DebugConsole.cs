@@ -99,8 +99,7 @@ namespace GPCommon
         {
             if (id.IndexOf(" ") != -1)
             {
-                Debug.LogError(string.Format("The command id '{0}' you defined in console should not contains space",
-                    id));
+                //Debug.LogError(string.Format("The command id '{0}' you defined in console should not contains space",  id));
                 return;
             }
 
@@ -114,8 +113,7 @@ namespace GPCommon
         {
             if (command.Id.IndexOf(" ") != -1)
             {
-                Debug.LogError(string.Format("The command id '{0}' you defined in console should not contains space",
-                    command.Id));
+                //Debug.LogError(string.Format("The command id '{0}' you defined in console should not contains space", command.Id));
                 return;
             }
 
