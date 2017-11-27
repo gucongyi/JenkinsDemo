@@ -178,6 +178,11 @@ namespace GPCommon
             currEnableDevBuild = EnableDevBuild();
             currIsCustomPackName = IsCustomPackName();
             currCustomPackName = GetCustomPackName();
+//			currEnableDevBuild=true;
+//			currIsCustomPackName = true;
+//			currCustomPackName="JenTest";
+
+
         }
 
         //by gcy
@@ -185,7 +190,7 @@ namespace GPCommon
         {
             BuildOptions options;
 
-            var enableDevBuild = EnableDevBuild();
+			var enableDevBuild = EnableDevBuild();
             if (enableDevBuild)
             {
                 options = BuildOptions.CompressWithLz4HC | BuildOptions.Development | BuildOptions.ConnectWithProfiler|BuildOptions.ConnectToHost;
@@ -225,6 +230,7 @@ namespace GPCommon
         }
 
         //by gcy
+		[MenuItem("QuickBuild/SetBuildConfig")]
         public static void SetBuildConfig()
         {
             //SetOutputFolderPath();
@@ -248,6 +254,7 @@ namespace GPCommon
             config.ProductName = CurrBuildData.productName;
             config.BundleVersionCode = CurrBuildData.bundleVersionCode;
             config.BundleVersion = CurrBuildData.BundleVersion;
+			OutputFolder = "/Users/hyz/Desktop";
             QuickBuild.ExportIPA = true;
             BuildIOS(config, "");
 			OpenLastBuildFolder();
