@@ -51,7 +51,6 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-     <Compile Include="Assets\Editor\JenkinsAdapter.cs" />
      <Compile Include="Assets\GPCommon\Core\Editor\EditorHelper.cs" />
      <Compile Include="Assets\GPCommon\Editor\AtlasSpriteReferenceBuilder.cs" />
      <Compile Include="Assets\GPCommon\Editor\CodeBuilder.cs" />
@@ -183,8 +182,6 @@
   <ItemGroup>
     <ProjectReference Include="Assembly-CSharp.csproj">
       <Project>{49999603-3B56-8D59-7D8A-8225A4C51B57}</Project>      <Name>Assembly-CSharp</Name>    </ProjectReference>
-    <ProjectReference Include="Assembly-CSharp-Editor-firstpass.csproj">
-      <Project>{4529D6FE-00AB-70AB-6FE8-0BF995354CBF}</Project>      <Name>Assembly-CSharp-Editor-firstpass</Name>    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

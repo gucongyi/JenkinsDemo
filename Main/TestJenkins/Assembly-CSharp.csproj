@@ -106,6 +106,7 @@
      <Compile Include="Assets\GPCommon\Utils\UI\UIManager\IUIElement.cs" />
      <Compile Include="Assets\GPCommon\Utils\UI\UIManager\IUIManagerConnector.cs" />
      <Compile Include="Assets\GPCommon\Utils\UI\UIManager\UIManager.cs" />
+     <Compile Include="Assets\Scripts\BuildData.cs" />
  <Reference Include="UnityEngine.UI">
  <HintPath>/Applications/Unity201702f3/Unity.app/Contents/UnityExtensions/Unity/GUISystem/UnityEngine.UI.dll</HintPath>
  </Reference>
