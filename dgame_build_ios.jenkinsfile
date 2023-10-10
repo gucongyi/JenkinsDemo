@@ -1,0 +1,918 @@
+
+// 捕获异常方法
+def CatchLog(filePath, errorTitle, noticeUrl){
+    // 判断文件是否存在
+    hasErrorLog = sh(script: "[ -f '${filePath}' ]  && echo 'true' || echo 'false' ", returnStdout: true).trim().replace('\"', '')
+
+    if (hasErrorLog == "true")
+    {
+        // 去空格，去单双引号，去括号，去换行
+        catchErrorLog = sh(script: "cat ${filePath}", returnStdout:true).trim().replace('\"', '').replace('\'', '').replace('(', '[').replace(')', ']').replace('`', '').replace('\r', '').replace('\n', '')
+
+        node('mac'){
+            sh """
+            echo ${catchErrorLog}
+            curl '${noticeUrl}' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${errorTitle}：${catchErrorLog}。", "mentioned_list":["@all"]}}'
+            build error
+            """
+        }
+    }
+}
+
+// 上报错误
+def PrintLog(logMsg, errorTitle, noticeUrl, noticeUser){
+    if (noticeUser == null){
+        noticeUser = "@all"
+    }
+    // 去空格，去单双引号，去括号，去换行
+    logMsg = logMsg.replace('\"', '').replace('\'', '').replace('(', '[').replace(')', ']').replace('`', '').replace('\r', '').replace('\n', '')
+
+    node('mac'){
+      // 加上build error命令只是为了让进程停下
+        sh """
+        echo ${logMsg}
+        curl '${noticeUrl}' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${errorTitle}：${logMsg}。", "mentioned_list":["${noticeUser}"]}}'
+        build error
+        """
+    }
+}
+
+def PushNotice(logMsg, noticeUrl, noticeUser){
+    // 去空格，去单双引号，去括号，去换行
+    logMsg = logMsg.replace('\"', '').replace('\'', '').replace('(', '[').replace(')', ']').replace('`', '').replace('\r', '')
+
+    node('mac'){
+      // 加上build error命令只是为了让进程停下
+        sh """
+        curl '${noticeUrl}' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${logMsg}。", "mentioned_list":["${noticeUser}"]}}'
+        """
+    }
+}
+
+def printShLog(logMsg)
+{
+   sh """ 
+      echo ${logMsg}
+   """        
+}
+
+node(Target_Node)
+{
+
+    def QYWX_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=30fb6c63-826d-4099-9b90-dcc1adc10be1"
+    def BUILD_DIR = "build"
+    def UNITY
+    def PROJECTHOME
+    def BUILDHOME
+    def BUILDPATH
+    def SRC_DIR = "dgame"
+
+    def XCODE_PATH
+
+    def FINAL_IPA_NAME
+    def ARCHIVE_PATH
+
+    def EZFUN_BUILD_HOME
+    def EZFUN_ARCHIVE_PATH
+
+    def now = new Date()
+    
+
+    def CLIENT_PROJECT_PATH
+    def SVN
+    def UPDATE_ZIP_NAME = "client_ios_update_" + PACKAGE_VERSION + "_" + BUILD_NUMBER
+    def VERSION_NAME = PACKAGE_VERSION
+    def UseAssetBundle = "true"
+    def U3DAllowDebugging = U3DDevelopment
+    def U3DConnectWithProfiler = U3DDevelopment
+    def HotFixBuild = "false"
+    def hasException="false"
+  	def exMsg="Addressable打包异常，详细信息见上边"
+
+    //判定三条并行分支是否都成功
+    def isParallelMainProjSucc=true
+    def isParallelBuildDLLAndXlsSucc=true
+    def isParallelAssetsBundleSucc=true
+
+    stage("PrepareEnv")
+    {
+        try
+        {
+            wrap([$class: 'BuildUser'])
+            {
+                PushNotice("苹果${BUILD_URL}开始打包", QYWX_URL, BUILD_USER_ID)
+            }
+        }catch(all)
+        {
+           echo "auto build"
+           BUILD_USER_ID = ""
+        }
+        // if(SYMBOLS_TYPE == "EZFUN_DEBUG")
+        // {
+        //     EZFUN_DEBUG = "true"
+        // }
+        // if(SYMBOLS_TYPE == "RELEASE")
+        // {
+        //     RELEASE = "true"
+        // }
+
+        // if(RELEASE == "false")
+        // {
+        //    VERSION_NAME = "0.0." + BUILD_NUMBER
+        // }
+        if(DEBUG_OR_RELEASE == "debug")
+        {
+            VERSION_NAME = "0.0." + BUILD_NUMBER
+        }
+
+        PROJECTHOME = WORKSPACE + "/" + SRC_DIR
+        BUILDHOME = WORKSPACE + "/" + BUILD_DIR + "/build"
+        EZFUN_BUILD_HOME = WORKSPACE + "/" + BUILD_DIR + "/ezfun"
+        BUILDPATH = WORKSPACE + "/" + BUILD_DIR + "/export"
+        UNITY = UNITY_2020_3_33
+
+        // 找一下共享里面保存的BuildNum
+        LAST_IPA_BUILD_NUM = sh(script: "curl http://172.16.5.233/dgame/iOSBuildNum/${MPLATFORM}_BuildNum.json", returnStdout: true).trim().replace('\"', '')
+        if (LAST_IPA_BUILD_NUM.contains("404 Not Found")){
+            // 找不到的话默认0
+            LAST_IPA_BUILD_NUM = 0
+        }else {
+            LAST_IPA_BUILD_NUM = Integer.parseInt(LAST_IPA_BUILD_NUM)
+        }
+
+        // 不填BuildNum的话
+        if (IPA_BUILD_NUM == "")
+        {
+            // APPStore直接最后的记录加1
+            if (BUILD_APPSTORE == "true"){
+                IPA_BUILD_NUM = LAST_IPA_BUILD_NUM + 1
+            }
+            // 不是的话就用上次的就行
+            else{
+                IPA_BUILD_NUM = LAST_IPA_BUILD_NUM
+            }
+        }else{
+            IPA_BUILD_NUM = Integer.parseInt(IPA_BUILD_NUM)
+            // 如果打AppStore包 同时BuildNum比之前的构建都小，那么抛出错误
+            if (BUILD_APPSTORE == "true" && IPA_BUILD_NUM < LAST_IPA_BUILD_NUM){
+                print("BuildNum can no be smaller than " + LAST_IPA_BUILD_NUM)
+                sh """
+                    build error
+                """
+            }
+        }
+
+        if(IsInitAB=="false")
+		{
+			HotFixBuild = "true"
+		}
+
+        XCODE_PATH = XCODE_13_4_1 + "/Contents/Developer/usr/bin/xcodebuild"
+        ARCHIVE_PATH = BUILDHOME + "/dgame.xcarchive"
+        EZFUN_ARCHIVE_PATH = EZFUN_BUILD_HOME + "/dgame.xcarchive"
+        FINAL_IPA_NAME = "dgame_${PACKAGE_VERSION}_${BUILD_NUMBER}_${IPA_BUILD_NUM}_${SYMBOLS_TYPE}"
+
+        CLIENT_PROJECT_PATH = PROJ_REPO_URL + "/client"
+		ADDRESSABLES_PATH = PROJECTHOME + "/ServerData/iOS"
+        SVN = SVNPath
+        // 为构建增加描述
+        sh """
+        curl -d "description=$Target_Node $PROJ_REPO_URL" --user ezfun:ezfun001 "$BUILD_URL/submitDescription"
+        """
+
+       if (NOTICE_PARAMS != ""){
+           wrap([$class: 'BuildUser'])
+           {
+               def NOTICE_URL = QYWX_URL
+               def NOTICE_LOG = "苹果\n打包项目地址:${PROJ_REPO_URL}\n\
+               渠道:${MPLATFORM}\n\
+               包版本号ResVersion:${PACKAGE_VERSION}\n\
+               BuildNum:${IPA_BUILD_NUM}\n\
+               VersionNumber:${VERSION_NAME}\n\
+               包类型:${DEBUG_OR_RELEASE}\n\
+               构建号:${BUILD_NUMBER}\n\
+               是否打IPA开发证书包:${BUILD_IPA}\n\
+               是否打HOC开发证书包:${BUILD_ADHOC}\n\
+               是否打渠道AppStore包:${BUILD_APPSTORE}\n\
+               是否开启文件共享:${ENABLE_FILE_SHARE}\n\
+               包的用途:${NOTICE_PARAMS}\n\
+               打包人:${BUILD_USER_ID}"
+               PushNotice(NOTICE_LOG, NOTICE_URL, "@all")
+           }
+       }
+    }
+
+    //并行
+    stage('并行开始'){
+        parallel(
+            //打包主工程
+            'MainProj':{
+                //checkout加了账号密码是为了分权限，不用拉一些没必要的资源，减少编译时间
+                stage('Main Checkout') {
+                    //return
+                    try{
+                        //checkout
+                        dir(SRC_DIR)
+                        {
+                            sh """
+                            cd ${PROJECTHOME}
+                            err=\$(${SVN} info --username dgame_proj 2>&1 | grep E155007 | cut -c 6-12)
+                            if [[ "E155007" = \$err ]]; then
+                                if [ -d ${PROJECTHOME} -a "`ls -A ${PROJECTHOME}`" != "" ]; then
+                                    echo "${PROJECTHOME} has files!"
+                                    curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Error! ${BUILD_URL} > Main Project In ReCheckOut,Please Manual Check svn Problem!","mentioned_list":["@all"]}}'
+                                    ${isParallelMainProjSucc}=false
+                                    exit 1
+                                else
+                                    echo "Main Checkout Real no svn Directory"
+                                    curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Warning! ${BUILD_URL} > Main Project In ReCheckOut,May Cost 8~9h long time","mentioned_list":["@all"]}}'
+                                    cd ..
+                                    ${SVN} co ${CLIENT_PROJECT_PATH} ${SRC_DIR} --username dgame_proj --password 123456
+                                fi
+                            else
+                                if [ "$FORCE_SWITCH" == "false" ]; then
+                                    url=\$(${SVN} info --username dgame_proj | grep ^URL | cut -c 6-)
+                                    if [[ ${CLIENT_PROJECT_PATH} == \$url ]]; then
+                                        echo "begin cleanup...."
+                                        ${SVN} cleanup
+
+                                        echo "begin revert...."
+                                        ${SVN} revert * -R --username dgame_proj --password 123456
+
+                                        echo "begin update...."
+                                        ${SVN} update --username dgame_proj --password 123456
+                                    else
+                                        echo "begin switch...."
+                                        ${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+                                        ${SVN} revert * -R --username dgame_proj --password 123456
+                                        ${SVN} update --username dgame_proj --password 123456
+                                    fi
+                                else
+                                    echo "begin force switch...."
+                                    ${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+                                    ${SVN} cleanup
+                                    ${SVN} revert * -R --username dgame_proj --password 123456
+                                    ${SVN} update --username dgame_proj --password 123456
+                                fi
+                            fi
+                            """
+                        }
+                        //revert
+                        sh """
+                        cd ${PROJECTHOME}/Assets/
+                        ${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+                        cd ${PROJECTHOME}/tools/
+                        ${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+                        cd ${PROJECTHOME}/Assets/StreamingAssets/
+                        ${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+                        cd ${PROJECTHOME}/Assets/
+						${SVN} cleanup . --remove-unversioned
+                        
+                        """
+                        //clean
+                        sh """
+                        mkdir -p ${BUILDHOME}
+
+                        rm -rf ${ARCHIVE_PATH}
+                        rm -rf ${EZFUN_ARCHIVE_PATH}
+                        rm -rf ${BUILDHOME}/*
+                        rm -rf ${PROJECTHOME}/Assets/dgame/Public/Editor/BehaviorDesign/*
+
+
+                        mkdir -p ${BUILDPATH}
+                        rm -rf ${BUILDPATH}/*
+
+                        rm -rf ${PROJECTHOME}/mergeTexturesBak
+                        mkdir -p ${PROJECTHOME}/mergeTexturesBak
+
+                        """
+                    }
+                    catch(exception_log){
+                          wrap([$class: 'BuildUser'])
+                          {
+                              PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】苹果SVN执行失败", QYWX_URL, BUILD_USER_ID)
+                          }
+                    }
+
+                }
+                //先打一遍，用来生成裁剪的补充元数据的DLL
+                stage('Main Build For AOT '){
+                
+                        if(isParallelMainProjSucc==false)
+                        {
+	                        printShLog("===============Main Checkout Fail==============")
+	                        return
+                        }
+                        else
+                        {
+                        	printShLog("===============Main Checkout Succ,Begin Main Build==============")
+                        }
+                        if(IsInitAB=="false")
+                        {
+                            return
+                        } 
+                        sh """
+                            echo ${MPLATFORM} > ${PROJECTHOME}/platform.cf
+
+                            rm -rf ${PROJECTHOME}/Assets/dgame/Script/SDK/ThirdSDK
+                            mkdir -p ${PROJECTHOME}/Assets/dgame/Script/SDK/ThirdSDK
+                            #cp -rf ${PROJECTHOME}/tools/SDKScripts/${MPLATFORM}/* ${PROJECTHOME}/Assets/dgame/Script/SDK/ThirdSDK
+                        """
+
+                        sh"""
+                        export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${PATH}
+                        cd ${PROJECTHOME}/tools/iOS/
+                        python buildEZSDKParams.py ${MPLATFORM} ${APP_ID} ${DEBUG_OR_RELEASE}
+
+                        cp -rf ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/Libs/* ${PROJECTHOME}/Assets/Plugins/iOS/
+
+                        echo ${ENABLE_FILE_SHARE} >  ${PROJECTHOME}/tools/iOS/FILE_SHARE
+
+                        """
+                        // 预编译 
+                        try{
+                            sh """
+                            ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod BuildDll.PreBuild -buildTarget ios -logFile
+                            """
+                        }
+                        catch(exception_log){
+
+                        }
+                        sh"""
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod ezfunsdk.unity3d.EZSDKEncrypte.JenkinsEncrypteGameData -buildTarget ios GameDataPath ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/GameData.cf -logFile
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod CSObjectWrapEditor.Generator.ClearAll -buildTarget ios  -logFile
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod CSObjectWrapEditor.Generator.GenAll -buildTarget ios  -logFile
+
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.BuildiOSProj \
+                        -outPath ${BUILDPATH} \
+                        UseAssetBundle=${UseAssetBundle} \
+                        DEBUG_OR_RELEASE=${DEBUG_OR_RELEASE} \
+                        U3DAllowDebugging=${U3DAllowDebugging} \
+                        U3DDevelopment=${U3DDevelopment} \
+                        U3DConnectWithProfiler=${U3DConnectWithProfiler} \
+                        IAPBuildNum=${IPA_BUILD_NUM} \
+						ProfileType=${MPLATFORM} \
+                        IsAllLocalAB=${IsAllLocalAB} \
+                        VERSION_NAME=${VERSION_NAME} -logFile
+                        """
+                }
+                //打完AOT需要再次更新SVN,因为AOT会改变一些文件夹
+                stage('Main Checkout Again') {
+                    if(IsInitAB=="false")
+					{
+						return
+					}
+                    //return
+                    try{
+                        //checkout
+                        dir(SRC_DIR)
+                        {
+                            sh """
+                            cd ${PROJECTHOME}
+                            err=\$(${SVN} info --username dgame_proj 2>&1 | grep E155007 | cut -c 6-12)
+                            if [[ "E155007" = \$err ]]; then
+                                if [ -d ${PROJECTHOME} -a "`ls -A ${PROJECTHOME}`" != "" ]; then
+                                    echo "${PROJECTHOME} has files!"
+                                    curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Error! ${BUILD_URL} > Main Project In ReCheckOut,Please Manual Check svn Problem!","mentioned_list":["@all"]}}'
+                                    ${isParallelMainProjSucc}=false
+                                    exit 1
+                                else
+                                    echo "Main Checkout Real no svn Directory"
+                                    curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Warning! ${BUILD_URL} > Main Project In ReCheckOut,May Cost 8~9h long time","mentioned_list":["@all"]}}'
+                                    cd ..
+                                    ${SVN} co ${CLIENT_PROJECT_PATH} ${SRC_DIR} --username dgame_proj --password 123456
+                                fi
+                            else
+                                if [ "$FORCE_SWITCH" == "false" ]; then
+                                    url=\$(${SVN} info --username dgame_proj | grep ^URL | cut -c 6-)
+                                    if [[ ${CLIENT_PROJECT_PATH} == \$url ]]; then
+                                        echo "begin cleanup...."
+                                        ${SVN} cleanup
+
+                                        echo "begin revert...."
+                                        ${SVN} revert * -R --username dgame_proj --password 123456
+
+                                        echo "begin update...."
+                                        ${SVN} update --username dgame_proj --password 123456
+                                    else
+                                        echo "begin switch...."
+                                        ${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+                                        ${SVN} revert * -R --username dgame_proj --password 123456
+                                        ${SVN} update --username dgame_proj --password 123456
+                                    fi
+                                else
+                                    echo "begin force switch...."
+                                    ${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+                                    ${SVN} cleanup
+                                    ${SVN} revert * -R --username dgame_proj --password 123456
+                                    ${SVN} update --username dgame_proj --password 123456
+                                fi
+                            fi
+                            """
+                        }
+                        //revert
+                        sh """
+                        cd ${PROJECTHOME}/Assets/
+                        ${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+                        cd ${PROJECTHOME}/tools/
+                        ${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+                        cd ${PROJECTHOME}/Assets/StreamingAssets/
+                        ${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+                        """
+                        //clean
+                        sh """
+                        mkdir -p ${BUILDHOME}
+
+                        rm -rf ${ARCHIVE_PATH}
+                        rm -rf ${EZFUN_ARCHIVE_PATH}
+                        rm -rf ${BUILDHOME}/*
+                        rm -rf ${PROJECTHOME}/Assets/dgame/Public/Editor/BehaviorDesign/*
+
+
+                        mkdir -p ${BUILDPATH}
+                        rm -rf ${BUILDPATH}/*
+
+                        rm -rf ${PROJECTHOME}/mergeTexturesBak
+                        mkdir -p ${PROJECTHOME}/mergeTexturesBak
+
+                        """
+                    }
+                    catch(exception_log){
+                          wrap([$class: 'BuildUser'])
+                          {
+                              PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】苹果SVN执行失败", QYWX_URL, BUILD_USER_ID)
+                          }
+                    }
+
+                }
+				stage('GenFiles')
+                {
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					//只打AB这个要打，比如Lua文件更新，Json文件更新
+
+                    def DLL_PROJECTHOME = WORKSPACE + "/" + SRC_DIR
+                    
+                    try
+                    {
+                        // 加密Lua
+                        sh """
+                            ${UNITY} -quit -batchmode -projectPath ${DLL_PROJECTHOME} -executeMethod BuildDll.GenFiles -buildTarget ios -logFile
+                        """
+
+						// 预编译
+						try{
+							sh """
+								${UNITY} -quit -batchmode -projectPath ${DLL_PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget ios -logFile
+							"""
+						}
+						catch(exception_log){
+							sh """
+							   echo ${exception_log.toString()}
+							"""
+						}
+
+                        //打包的使用，不要上传，平台编译自己会生成一份
+                        return
+                        sh """
+                            cd ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/lua
+                            ${SVN} add . --force
+                            ${SVN} commit ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/lua --username dgame_proj --password 123456 -m "jenkins LuaGen Commit"
+
+                            cd ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/json
+                            ${SVN} add . --force
+                            ${SVN} commit ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/json --username dgame_proj --password 123456 -m "jenkins JsonGen Commit"
+
+                        """
+                    }catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】iOS打包失败", QYWX_URL, BUILD_USER_ID)
+                        }
+                    }
+                }
+                //华佗热更流程
+				stage('BuildAndCopyHotFix')
+				{
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					// 预编译
+					try{
+						sh """
+                            echo ${MPLATFORM} > ${PROJECTHOME}/platform.cf
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget ios -logFile
+                            ##根据参数重新设置一遍宏，解决热更脚本中再次Checkout宏没打进去问题
+                            ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.ReSetIOSMacroForHybirdDll \
+                            -outPath ${BUILDPATH} \
+                            UseAssetBundle=${UseAssetBundle} \
+                            DEBUG_OR_RELEASE=${DEBUG_OR_RELEASE} \
+                            U3DAllowDebugging=${U3DAllowDebugging} \
+                            U3DDevelopment=${U3DDevelopment} \
+                            U3DConnectWithProfiler=${U3DConnectWithProfiler} \
+                            IAPBuildNum=${IPA_BUILD_NUM} \
+                            ProfileType=${MPLATFORM} \
+                            IsAllLocalAB=${IsAllLocalAB} \
+                            VERSION_NAME=${VERSION_NAME} -logFile
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod HybridCLREditorHelper.BuildAndCopyHotFixAndAOTDll
+						"""
+					}
+					catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】打开Unity工程失败", QYWX_URL, BUILD_USER_ID)
+                        }
+					}
+				}
+                //设置资源分组
+				stage('MakeGroupsAssets')
+				{
+					if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					try {
+						sh """
+						${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+						${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AddressableAssetTool.MakeGroupsAssets
+						"""
+					}catch(exception_log){
+						node('mac'){
+							sh """
+							curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${ERROR_LOG_TITLE}设置资源分组失败了。", "mentioned_list":["janechen"]}}'
+							build error
+							"""
+						}
+					}
+				}
+                // Addressables Build
+                stage('Addressables Build')
+                {
+                    // return 
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+                    if(NEED_BUILD_AB == "false"){
+                        return
+                    }
+					//第一次打初始AB删除对应的本地和远程文件夹
+					sh """
+						if [ "$IsInitAB" == "true" ]; then
+							echo "================开始清除老的AB====================="
+							rm -rf ${PROJECTHOME}/ServerData/iOS
+							rm -rf ${PROJECTHOME}/Library/com.unity.addressables
+                            echo "================开始清除老的bin====================="
+							rm -rf ${PROJECTHOME}/Assets/AddressableAssetsData/iOS
+						fi
+                        if [ "$IsInitAB" == "false" ]; then
+							echo "================更新的时候老的AB不能删除，有关联，不然有下载不完情况====================="
+							rm -rf ${PROJECTHOME}/Library/com.unity.addressables
+						fi
+					"""
+					// 预编译
+					try{
+						sh """
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget ios -logFile
+						"""
+					}
+					catch(exception_log){ 
+
+					}
+
+					try{
+                        sh """
+                            ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.AddressabelsBuild -buildTarget ios \
+							IsAllLocalAB=${IsAllLocalAB} \
+                            IsInitAB=${IsInitAB} -logFile
+                        """
+					}
+					catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】执行Addressables 打包失败", QYWX_URL, BUILD_USER_ID)
+                        }
+					}
+
+                }
+
+
+                stage('Svn Commit Addressables')
+				{
+					if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+                    if(NEED_BUILD_AB == "false")
+                    {
+                        return
+                    }
+                    
+                    //将版本号写到AB文件夹下
+					sh """
+						echo ${BUILD_NUMBER} > ${PROJECTHOME}/ServerData/Android/ResVersion.txt
+					"""
+
+					//本地打包不用传ab到服务器
+					if(IsAllLocalAB == "true")
+                    {
+						return
+					}
+                    sh """
+						cd ${PROJECTHOME}/Assets/AddressableAssetsData/iOS
+						${SVN} add . --force
+						${SVN} commit ${PROJECTHOME}/Assets/AddressableAssetsData/iOS --username dgame_proj --password 123456 -m "jenkins Content_State iOS Commit"
+
+						cd ${PROJECTHOME}/ServerData/iOS
+						${SVN} add . --force
+                        ${SVN} status | grep '^!' | awk '{print \$2}' | xargs ${SVN} delete
+						${SVN} commit ${PROJECTHOME}/ServerData/iOS --username dgame_proj --password 123456 -m "jenkins ServerData iOS Commit"
+					"""
+				}
+            	stage('Zip Addressable AB')
+				{
+					if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+                    if(NEED_BUILD_AB == "false")
+					{
+                        return
+                    }
+					//本地打包不用传ab到服务器
+					if(IsAllLocalAB == "true")
+					{
+						return
+					}
+					sh """
+						cd ${PROJECTHOME}/ServerData/iOS
+						zip -r ${UPDATE_ZIP_NAME}.zip ./
+                        mv -f ${UPDATE_ZIP_NAME}.zip ${BUILDHOME}/
+					"""
+				}
+
+                //打unity ios 工程
+                stage('Main Build'){
+                
+                        if(isParallelMainProjSucc==false)
+                        {
+	                        printShLog("===============Main Checkout Fail==============")
+	                        return
+                        }
+                        else
+                        {
+                        	printShLog("===============Main Checkout Succ,Begin Main Build==============")
+                        }
+                        if(IsInitAB=="false")
+                        {
+                            return
+                        } 
+                        sh """
+                            echo ${MPLATFORM} > ${PROJECTHOME}/platform.cf
+
+                            rm -rf ${PROJECTHOME}/Assets/dgame/ScriptMain/ExternSDK/ThirdSDK
+                            mkdir -p ${PROJECTHOME}/Assets/dgame/ScriptMain/ExternSDK/ThirdSDK
+                            #cp -rf ${PROJECTHOME}/tools/SDKScripts/${MPLATFORM}/* ${PROJECTHOME}/Assets/dgame/ScriptMain/ExternSDK/ThirdSDK
+                        """
+
+                        sh"""
+                        export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${PATH}
+                        cd ${PROJECTHOME}/tools/iOS/
+                        python buildEZSDKParams.py ${MPLATFORM} ${APP_ID} ${DEBUG_OR_RELEASE}
+
+                        cp -rf ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/Libs/* ${PROJECTHOME}/Assets/Plugins/iOS/
+
+                        echo ${ENABLE_FILE_SHARE} >  ${PROJECTHOME}/tools/iOS/FILE_SHARE
+
+                        """
+                        // 预编译 
+                        try{
+                            sh """
+                            ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod BuildDll.PreBuild -buildTarget ios -logFile
+                            """
+                        }
+                        catch(exception_log){
+
+                        }
+                        sh"""
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod ezfunsdk.unity3d.EZSDKEncrypte.JenkinsEncrypteGameData -buildTarget ios GameDataPath ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/GameData.cf -logFile
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod CSObjectWrapEditor.Generator.ClearAll -buildTarget ios  -logFile
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod CSObjectWrapEditor.Generator.GenAll -buildTarget ios  -logFile
+
+                        ${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.BuildiOSProj \
+                        -outPath ${BUILDPATH} \
+                        UseAssetBundle=${UseAssetBundle} \
+                        DEBUG_OR_RELEASE=${DEBUG_OR_RELEASE} \
+                        U3DAllowDebugging=${U3DAllowDebugging} \
+                        U3DDevelopment=${U3DDevelopment} \
+                        U3DConnectWithProfiler=${U3DConnectWithProfiler} \
+                        IAPBuildNum=${IPA_BUILD_NUM} \
+						ProfileType=${MPLATFORM} \
+                        IsAllLocalAB=${IsAllLocalAB} \
+                        OpenUWA=${OpenUWA} \
+                        VERSION_NAME=${VERSION_NAME} -logFile
+
+                        echo ${PACKAGE_VERSION} > ${BUILDPATH}/Data/Raw/PACKAGE_VERSION
+                        echo ${BUILD_NUMBER} > ${BUILDPATH}/Data/Raw/BUILD_NUMBER
+
+                        rm -f ${BUILDPATH}/Data/Raw/GameData.cf
+                        cp -f ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/GameData.cf ${BUILDPATH}/Data/Raw/GameData.cf
+
+                        #copy hybridclr libil2cpp.a to Libraries
+                        rm -f ${BUILDPATH}/Libraries/libil2cpp.a
+                        cp -f ${PROJECTHOME}/tools/iOS/HybridCLR/libil2cpp.a ${BUILDPATH}/Libraries/libil2cpp.a
+
+                        """
+                }
+            }
+        )
+    }
+
+    stage('archive') {
+        //return 
+        if(isParallelMainProjSucc==false||isParallelBuildDLLAndXlsSucc==false||isParallelAssetsBundleSucc==false)
+        {
+            printShLog("===============one of Checkout Fail return==============")
+            return
+        }
+        else
+        {
+            printShLog("===============ALL Checkout Succ,Begin archive==============")
+        } 
+        if(IsInitAB=="false")
+		{
+			return
+		}  
+
+        try{
+            sh """
+            cd ${BUILDPATH}
+            export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${PATH}
+            security unlock-keychain -p test12345 login.keychain
+            ${XCODE_PATH} -sdk iphoneos archive -scheme Unity-iPhone -target Unity-iPhone -archivePath ${ARCHIVE_PATH} -UseModernBuildSystem=YES \
+            -configuration Release ENABLE_BITCODE=NO CODE_SIGN_ENTITLEMENTS="${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/sgwsba.entitlements" -jobs 8
+
+            if [ "${BUILD_IPA}" == "true" ]; then
+                ${XCODE_PATH} -exportArchive -archivePath ${ARCHIVE_PATH}/ -exportPath ${BUILDHOME}/Development \
+                -exportOptionsPlist ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/development.plist  -jobs 8
+
+                mv ${BUILDHOME}/Development/*.ipa ${BUILDHOME}/${FINAL_IPA_NAME}_development.ipa
+            fi
+
+            if [ "${BUILD_ADHOC}" == "true" ]; then
+                if [[ -f "${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/adhoc.plist" ]]; then
+                    ${XCODE_PATH} -exportArchive -archivePath ${ARCHIVE_PATH}/ -exportPath ${BUILDHOME}/ADHoc \
+                    -exportOptionsPlist ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/adhoc.plist -jobs 8
+
+                    mv ${BUILDHOME}/ADHoc/*.ipa ${BUILDHOME}/${FINAL_IPA_NAME}_adhoc.ipa
+                fi
+            fi
+
+            if [ "${BUILD_APPSTORE}" == "true" ]; then
+                if [[ -f "${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/appstore.plist" ]]; then
+                    ${XCODE_PATH} -exportArchive -archivePath ${ARCHIVE_PATH}/ -exportPath ${BUILDHOME}/AppStore \
+                    -exportOptionsPlist ${PROJECTHOME}/tools/iOS/channel/${MPLATFORM}/appstore.plist -jobs 8
+
+                    mv ${BUILDHOME}/AppStore/*.ipa ${BUILDHOME}/${FINAL_IPA_NAME}_appstore.ipa
+                    curl -d 'buildnum=${IPA_BUILD_NUM}&platform=dgame_${MPLATFORM}' -X POST http://172.16.5.233/dgame/iOSBuildNum/IOSRecordBuildNum.php
+                fi
+            fi
+            """
+            // 导出符号表
+            /*
+            sh"""
+
+            cd ${ARCHIVE_PATH}
+            zip -r ${BUILDHOME}/dsYMs_${MPLATFORM}.zip dsYMs
+
+            export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${PATH}
+
+            java -jar ${PROJECTHOME}/tools/buglyqq-upload-symbol.jar -appid e61969877a \
+            -appkey 80f214cf-ed5c-46eb-a281-a0c72b7ff0a9 -bundleid com.supernova.zhensan.hktw.gw \
+            -version ${VERSION_NAME}.${IPA_BUILD_NUM} -platform IOS -inputSymbol ${ARCHIVE_PATH}/dsYMs
+            """
+            */
+
+
+        }catch(exception_log){
+          wrap([$class: 'BuildUser'])
+          {
+              PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】苹果archive执行失败", QYWX_URL, BUILD_USER_ID)
+          }
+        }
+
+    }
+
+      //  自动上传资源包到腾讯云 与打包无关
+    stage('Upload')
+    {
+        //return
+        if(isParallelMainProjSucc==false||isParallelBuildDLLAndXlsSucc==false||isParallelAssetsBundleSucc==false)
+        {
+            printShLog("===============one of Checkout Fail return==============")
+            return
+        }
+        else
+        {
+            printShLog("===============ALL Checkout Succ,Begin Upload==============")
+        }
+        
+        if(NEED_BUILD_AB == "false"){
+            return
+        }
+        if(IsAllLocalAB == "true"){
+			return
+		}
+
+        try
+        {
+            sh """
+				export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${PATH}
+                rm -rf ${PROJECTHOME}/uploadFail.json
+                cd ${PROJECTHOME}/tools
+                python UploadAddressables.py ${ADDRESSABLES_PATH} ${PACKAGE_VERSION} ${BUILD_NUMBER} iOS
+            """
+            archive 'uploadFail.json'
+            wrap([$class: 'BuildUser'])
+            {
+                PushNotice("${CLIENT_PROJECT_PATH}Addressables资源已上传到腾讯云", QYWX_URL, BUILD_USER_ID)
+            }
+        }catch(all)
+        {
+            wrap([$class: 'BuildUser'])
+            {
+                PushNotice("${CLIENT_PROJECT_PATH}小包资源包上传失败！", QYWX_URL, BUILD_USER_ID)
+            }
+        }
+    }
+
+    stage('FinalArchive') {
+      //return
+        if(isParallelMainProjSucc==false||isParallelBuildDLLAndXlsSucc==false||isParallelAssetsBundleSucc==false)
+        {
+            printShLog("===============one of Checkout Fail return==============")
+            return
+        }
+        else
+        {
+            printShLog("===============ALL Checkout Succ,Begin FinalArchive==============")
+        }
+        if(IsInitAB=="false")
+		{
+            wrap([$class: 'BuildUser'])
+				{
+					PushNotice("${CLIENT_PROJECT_PATH} iOS热更资源包成功，地址：$BUILD_URL", QYWX_URL, BUILD_USER_ID)
+				}
+			return
+		}
+        if(HotFixBuild == "true")
+        {
+        }else
+        {
+            archive 'build/build/*.ipa'
+        }
+        if(NEED_BUILD_AB == "true"&&IsAllLocalAB == "false")
+		{
+			archive 'build/build/*.zip'
+            sh """
+            mkdir -p ${BUILDHOME}/${BUILD_NUMBER}
+            cp ${PROJECTHOME}/ServerData/iOS/catalog_CustomAlways.hash ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.hash
+			cp ${PROJECTHOME}/ServerData/iOS/catalog_CustomAlways.json ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.json
+			cp ${PROJECTHOME}/Assets/AddressableAssetsData/iOS/addressables_content_state.bin ${BUILDHOME}/${BUILD_NUMBER}/addressables_content_state.bin
+		    """
+        }
+        wrap([$class: 'BuildUser'])
+        {
+            PushNotice("${CLIENT_PROJECT_PATH}苹果打包成功，地址：${BUILD_URL}", QYWX_URL, BUILD_USER_ID)
+        }
+    }
+    stage('Import to SVN')
+	{
+		if(NEED_BUILD_AB == "true"&&IsAllLocalAB == "false")
+		{
+			sh """
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${UPDATE_ZIP_NAME}.zip svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/ios_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/${UPDATE_ZIP_NAME}.zip -m'jenkins commit hotfix res'
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.hash svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/ios_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/catalog_CustomAlways.hash -m'jenkins commit catalog_CustomAlways.hash'
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.json svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/ios_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/catalog_CustomAlways.json -m'jenkins commit catalog_CustomAlways.json'
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.hash svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/ios_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/addressables_content_state.bin -m'jenkins commit addressables_content_state.bin'
+			"""
+		}
+	}
+}

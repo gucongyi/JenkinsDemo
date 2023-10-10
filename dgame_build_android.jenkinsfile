@@ -1,0 +1,907 @@
+
+// 捕获异常方法
+def CatchLog(filePath, errorTitle, noticeUrl){
+    // 判断文件是否存在
+    hasErrorLog = sh(script: "[ -f '${filePath}' ]  && echo 'true' || echo 'false' ", returnStdout: true).trim().replace('\"', '')
+
+    if (hasErrorLog == "true")
+    {
+        // 去空格，去单双引号，去括号，去换行
+        catchErrorLog = sh(script: "cat ${filePath}", returnStdout:true).trim().replace('\"', '').replace('\'', '').replace('(', '[').replace(')', ']').replace('`', '').replace('\r', '').replace('\n', '')
+
+        node('mac'){
+            sh """
+            echo ${catchErrorLog}
+            curl '${noticeUrl}' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${errorTitle}：${catchErrorLog}。", "mentioned_list":["@all"]}}'
+            build error
+            """
+        }
+    }
+}
+
+// 上报错误
+def PrintLog(logMsg, errorTitle, noticeUrl, noticeUser){
+    if (noticeUser == null){
+        noticeUser = "@all"
+    }
+    // 去空格，去单双引号，去括号，去换行
+    logMsg = logMsg.replace('\"', '').replace('\'', '').replace('(', '[').replace(')', ']').replace('`', '').replace('\r', '').replace('\n', '')
+
+    node('mac'){
+      // 加上build error命令只是为了让进程停下
+        sh """
+        echo ${logMsg}
+        curl '${noticeUrl}' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${errorTitle}：${logMsg}。", "mentioned_list":["${noticeUser}"]}}'
+        build error
+        """
+    }
+}
+
+def PushNotice(logMsg, noticeUrl, noticeUser){
+    // 去空格，去单双引号，去括号，去换行
+    logMsg = logMsg.replace('\"', '').replace('\'', '').replace('(', '[').replace(')', ']').replace('`', '').replace('\r', '')
+
+    node('mac'){
+      // 加上build error命令只是为了让进程停下
+        sh """
+        curl '${noticeUrl}' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${logMsg}。", "mentioned_list":["${noticeUser}"]}}'
+        """
+    }
+}
+
+def printShLog(logMsg)
+{
+    sh """
+        echo ${logMsg}
+    """
+}
+
+node(Target_Node){
+
+	def QYWX_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=30fb6c63-826d-4099-9b90-dcc1adc10be1"
+	def BUILD_DIR = "build"
+	def UNITY
+	def PROJECTHOME
+	def BUILDHOME
+	def SRC_DIR = "dgame"
+	def DLL_CLIENT="client"
+	def OUT_PATH
+	def STREAMMING_PKG_DIR = "StreammingPkg"
+
+	def STREAM_PACK1_PATH
+	def STREAM_PACK1_NAME = "StreammingPackage1"
+
+	def AB_DIR = "AssetsBundleCache"
+	def AB_HOME
+	def CLIENT_PROJECT_PATH
+	def XLS_PROJECT_PATH
+	def AB_PROJECT_PATH
+
+	def LARGEDATA_JSON
+	def USE_IL2CPP = "true"
+	def SVN
+	def FINAL_APK_NAME
+	def UPDATE_ZIP_NAME = "client_android_update_" + PACKAGE_VERSION + "." + BUILD_NUMBER
+	def WINDOWS = "false"
+	def VERSION_NAME = PACKAGE_VERSION
+	def UseAssetBundle = "true"
+
+	def U3DAllowDebugging = U3DDevelopment
+	def U3DConnectWithProfiler = U3DDevelopment
+	def USE_PocoManager = "false"
+	def EZFUN_DEBUG = "false"
+	def RELEASE = "false"
+	def VERSION_CODE = 1
+	def ApkRemoteDebug = U3DDevelopment
+	def LoadingCostAnalysis = "false"
+	def GAME_ID = GameID
+    def isParallelMainProjSucc = true
+	def HotFixBuild = "false"
+
+	def hasException="false"
+  	def exMsg="Addressable打包异常，详细信息见上边"
+
+	//params set
+	stage("Prepare Env")
+	{
+		try
+		{
+			wrap([$class: 'BuildUser'])
+			{
+				PushNotice("安卓${BUILD_URL}开始打包", QYWX_URL, BUILD_USER_ID)
+			}
+		}catch(all)
+		{
+			echo "auto build"
+			BUILD_USER_ID = ""
+		}
+
+		if(Target_Node.contains("android"))
+		{
+			WINDOWS = "true"
+			echo "WINDOWS BUILD"
+		}
+
+        if(SYMBOLS_TYPE == "Debug")
+        {
+            EZFUN_DEBUG = "true"
+        }
+        else if(SYMBOLS_TYPE == "Release")
+        {
+            RELEASE = "true"
+        }
+
+		if(IsInitAB=="false")
+		{
+			HotFixBuild = "true"
+		}
+
+		UNITY = UNITY_2020
+
+		PROJECTHOME = WORKSPACE + "/" + SRC_DIR
+		BUILDHOME = WORKSPACE + "/" + BUILD_DIR
+		AB_HOME = WORKSPACE + "/" + AB_DIR
+		OUT_PATH = PROJECTHOME + "/tools/Android/Builds"
+		STREAM_PACK1_PATH = WORKSPACE + "/" + STREAMMING_PKG_DIR
+
+		CLIENT_PROJECT_PATH = PROJ_REPO_URL + "/client"
+		XLS_PROJECT_PATH = PROJ_REPO_URL + "/xls"
+		AB_PROJECT_PATH = PROJ_REPO_URL + "/AssetsBundleCache/Android"
+		ADDRESSABLES_PATH = PROJECTHOME + "/ServerData/Android"
+		SVN = SVNPath
+
+		if(RELEASE == "false")
+		{
+			VERSION_NAME = "0.0." + BUILD_NUMBER
+		}
+
+		// 找一下共享里面保存的VersionCode
+		LAST_VERSION_CODE = sh(script: "curl http://share.ezfun/dgame/AndroidVersionCode/${MPLATFORM}_VersionCode.json", returnStdout: true).trim().replace('\"', '')
+		if (LAST_VERSION_CODE.contains("404 Not Found")){
+			// 找不到的话默认1
+			LAST_VERSION_CODE = 1
+		}else {
+			LAST_VERSION_CODE = Integer.parseInt(LAST_VERSION_CODE)
+		}
+		
+		VERSION_CODE = LAST_VERSION_CODE + 1
+		sh"""
+			echo ==================LAST_VERSION_CODE:${LAST_VERSION_CODE}
+			echo ==================VERSION_CODE:${VERSION_CODE}
+		"""
+
+
+		// 为构建增加描述
+		if(HotFixBuild == "true")
+		{
+			sh """
+			curl -d "description=$Target_Node HotFix $PROJ_REPO_URL" --user ezfun:ezfun001 "$BUILD_URL/submitDescription"
+			"""
+		}else
+		{
+			sh """
+			curl -d "description=$Target_Node $PROJ_REPO_URL" --user ezfun:ezfun001 "$BUILD_URL/submitDescription"
+			"""
+		}
+	}
+
+
+	//并行
+	stage('并行'){
+		parallel(
+			//打包主工程
+			'MainProj':{
+				//checkout加了账号密码是为了分权限，不用拉一些没必要的资源，减少编译时间
+				stage('Main Checkout') {
+					//checkout
+					try
+					{
+						dir(SRC_DIR)
+						{
+							sh """
+								cd ${PROJECTHOME}
+								err=\$(${SVN} info --username dgame_proj 2>&1 | grep E155007 | cut -c 6-12)
+								if [[ "E155007" = \$err ]]; then
+                                    if [ -d ${PROJECTHOME} -a "`ls -A ${PROJECTHOME}`" != "" ]; then
+                                        echo "${PROJECTHOME} has files!"
+                                        curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Error! ${BUILD_URL} > Main Project In ReCheckOut,Please Manual Check svn Problem!","mentioned_list":["@all"]}}'
+                                        ${isParallelMainProjSucc}=false
+                                        exit 1
+                                    else
+                                        echo "Main Checkout Real no svn Directory"
+                                        curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Warning! ${BUILD_URL} > Main Project In ReCheckOut,May Cost 8~9h long time","mentioned_list":["@all"]}}'
+                                        cd ..
+                                        ${SVN} co ${CLIENT_PROJECT_PATH} ${SRC_DIR} --username dgame_proj --password 123456
+                                    fi
+
+								else
+									if [ "$FORCE_SWITCH" == "false" ]; then
+										url=\$(${SVN} info --username dgame_proj | grep ^URL | cut -c 6-)
+										if [ "$WINDOWS" == "true" ]; then
+											urllen=\${#url}-1
+											url=\${url:0:urllen}
+										fi
+
+										if [[ ${CLIENT_PROJECT_PATH} == \$url ]]; then
+											echo "begin cleanup...."
+											${SVN} cleanup
+											echo "begin revert...."
+											${SVN} revert * -R --username dgame_proj --password 123456
+
+											echo "begin update...."
+											${SVN} update --username dgame_proj --password 123456
+										else
+											echo "begin switch...."
+											${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+											${SVN} revert * -R --username dgame_proj --password 123456
+											${SVN} update --username dgame_proj --password 123456
+										fi
+									else
+										echo "begin force switch...."
+										${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+										${SVN} revert * -R --username dgame_proj --password 123456
+										${SVN} update --username dgame_proj --password 123456
+									fi
+								fi
+							"""
+						}
+
+						//revert
+						sh """
+							cd ${PROJECTHOME}/Assets/
+							${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+							cd ${PROJECTHOME}/tools/
+							${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+							cd ${PROJECTHOME}/Assets/dgame/AddressableRes/
+							${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+							
+							cd ${PROJECTHOME}/Assets/
+							${SVN} cleanup . --remove-unversioned
+						"""
+						//clean
+						sh """
+							mkdir -p ${BUILDHOME}
+
+							rm -rf ${BUILDHOME}/*
+
+							rm -rf ${PROJECTHOME}/tools/Android
+							${SVN} up ${PROJECTHOME}/tools/Android --username dgame_proj --password 123456
+
+
+							rm -rf ${PROJECTHOME}/mergeTexturesBak
+							mkdir -p ${PROJECTHOME}/mergeTexturesBak
+
+							rm -rf ${STREAM_PACK1_PATH}
+							mkdir -p ${STREAM_PACK1_PATH}							
+						"""
+					}catch(exception_log){
+						wrap([$class: 'BuildUser'])
+						{
+							PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】安卓SVN执行失败", QYWX_URL, BUILD_USER_ID)
+						}
+					}
+				}
+
+				//打unity Android 工程
+				stage('Main Build For AOT ')
+				{
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+					if(IsInitAB=="false")
+					{
+						return
+					}
+					sh """
+						echo ${MPLATFORM} > ${PROJECTHOME}/platform.cf
+					"""
+
+					if(WINDOWS == "true")
+					{
+						// 预编译
+						try{
+							sh """
+								${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild
+							"""
+						}
+						catch(exception_log){
+							wrap([$class: 'BuildUser'])
+								{
+									PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】打开Unity工程失败", QYWX_URL, BUILD_USER_ID)
+								}
+						}
+
+						sh"""
+							echo "windows AutoBuild.BuildAndroidProj"
+							echo ${PROJECTHOME}
+							echo "end"
+							${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AutoBuild.BuildAndroidProj -outPath ${OUT_PATH} -param "UseAssetBundle=${UseAssetBundle} ApkRemoteDebug=${ApkRemoteDebug} USE_IL2CPP=${USE_IL2CPP} ANDROID_NDK_HOME=${ANDROID_NDK_HOME} EZFUN_DEBUG=${EZFUN_DEBUG} RELEASE=${RELEASE} U3DAllowDebugging=${U3DAllowDebugging} U3DDevelopment=${U3DDevelopment} U3DConnectWithProfiler=${U3DConnectWithProfiler} USE_PocoManager=${USE_PocoManager} LoadingCostAnalysis=${LoadingCostAnalysis} IsAllLocalAB=${IsAllLocalAB}"
+						"""
+					}else
+					{
+						sh """
+							export ANDROID_HOME=${ANDROID_HOME}
+							export ANDROID_NDK_HOME=${ANDROID_NDK_HOME}
+							export JAVA_HOME=${JAVA_HOME}
+							export CLASSPATH=.:${JAVA_HOME}/lib:${JAVA_HOME}/include
+							export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${ANDROID_NDK_HOME}:${PATH}
+
+							echo "not windows AutoBuild.BuildAndroidProj"
+							echo ${PROJECTHOME}
+							echo "end"
+
+							${UNITY} -quit -batchmode \
+							-projectPath ${PROJECTHOME} \
+							-executeMethod AutoBuild.BuildAndroidProj \
+							-outPath ${OUT_PATH} \
+							UseAssetBundle=${UseAssetBundle} \
+							ApkRemoteDebug=${ApkRemoteDebug} \
+							USE_IL2CPP=${USE_IL2CPP} \
+							ANDROID_NDK_HOME=${ANDROID_NDK_HOME} \
+							EZFUN_DEBUG=${EZFUN_DEBUG} \
+							U3DAllowDebugging=${U3DAllowDebugging} \
+							U3DDevelopment=${U3DDevelopment} \
+							U3DConnectWithProfiler=${U3DConnectWithProfiler} \
+							LoadingCostAnalysis=${LoadingCostAnalysis}  \
+							 IsAllLocalAB=${IsAllLocalAB} -logFile
+						"""
+					}
+				}
+				//打完AOT需要再次更新SVN,因为AOT会改变一些文件夹
+				stage('Main Checkout Again') {
+					if(IsInitAB=="false")
+					{
+						return
+					}
+					//checkout
+					try
+					{
+						dir(SRC_DIR)
+						{
+							sh """
+								cd ${PROJECTHOME}
+								err=\$(${SVN} info --username dgame_proj 2>&1 | grep E155007 | cut -c 6-12)
+								if [[ "E155007" = \$err ]]; then
+                                    if [ -d ${PROJECTHOME} -a "`ls -A ${PROJECTHOME}`" != "" ]; then
+                                        echo "${PROJECTHOME} has files!"
+                                        curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Error! ${BUILD_URL} > Main Project In ReCheckOut,Please Manual Check svn Problem!","mentioned_list":["@all"]}}'
+                                        ${isParallelMainProjSucc}=false
+                                        exit 1
+                                    else
+                                        echo "Main Checkout Real no svn Directory"
+                                        curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "Main Checkout Warning! ${BUILD_URL} > Main Project In ReCheckOut,May Cost 8~9h long time","mentioned_list":["@all"]}}'
+                                        cd ..
+                                        ${SVN} co ${CLIENT_PROJECT_PATH} ${SRC_DIR} --username dgame_proj --password 123456
+                                    fi
+
+								else
+									if [ "$FORCE_SWITCH" == "false" ]; then
+										url=\$(${SVN} info --username dgame_proj | grep ^URL | cut -c 6-)
+										if [ "$WINDOWS" == "true" ]; then
+											urllen=\${#url}-1
+											url=\${url:0:urllen}
+										fi
+
+										if [[ ${CLIENT_PROJECT_PATH} == \$url ]]; then
+											echo "begin cleanup...."
+											${SVN} cleanup
+											echo "begin revert...."
+											${SVN} revert * -R --username dgame_proj --password 123456
+
+											echo "begin update...."
+											${SVN} update --username dgame_proj --password 123456
+										else
+											echo "begin switch...."
+											${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+											${SVN} revert * -R --username dgame_proj --password 123456
+											${SVN} update --username dgame_proj --password 123456
+										fi
+									else
+										echo "begin force switch...."
+										${SVN} sw ${CLIENT_PROJECT_PATH} --ignore-ancestry --username dgame_proj --password 123456
+										${SVN} revert * -R --username dgame_proj --password 123456
+										${SVN} update --username dgame_proj --password 123456
+									fi
+								fi
+							"""
+						}
+
+						//revert
+						sh """
+							cd ${PROJECTHOME}/Assets/
+							${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+							cd ${PROJECTHOME}/tools/
+							${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+
+							cd ${PROJECTHOME}/Assets/dgame/AddressableRes/
+							${SVN} status --username dgame_proj --password 123456 --no-ignore | grep '^[I?]' | cut -c 9- | while IFS= read -r f; do rm -rf \"\$f\"; done
+						"""
+						//clean
+						sh """
+							mkdir -p ${BUILDHOME}
+
+							rm -rf ${BUILDHOME}/*
+
+							rm -rf ${PROJECTHOME}/tools/Android
+							${SVN} up ${PROJECTHOME}/tools/Android --username dgame_proj --password 123456
+
+
+							rm -rf ${PROJECTHOME}/mergeTexturesBak
+							mkdir -p ${PROJECTHOME}/mergeTexturesBak
+
+							rm -rf ${STREAM_PACK1_PATH}
+							mkdir -p ${STREAM_PACK1_PATH}							
+						"""
+					}catch(exception_log){
+						wrap([$class: 'BuildUser'])
+						{
+							PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】安卓SVN执行失败", QYWX_URL, BUILD_USER_ID)
+						}
+					}
+
+					// 预编译
+					try{
+						sh """
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+						"""
+					}
+					catch(exception_log){
+					    sh """
+                           echo ${exception_log.toString()}
+						"""
+					}
+				}
+
+				stage('GenFiles')
+                {
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					//只打AB这个要打，比如Lua文件更新，Json文件更新
+
+                    def DLL_PROJECTHOME = WORKSPACE + "/" + SRC_DIR
+                    // 预编译
+					try{
+						sh """
+							${UNITY} -quit -batchmode -projectPath ${DLL_PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+						"""
+					}
+					catch(exception_log){
+						sh """
+							echo ${exception_log.toString()}
+						"""
+					}
+                    try
+                    {
+                        // 加密Lua
+                        sh """
+                            ${DLL_PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${DLL_PROJECTHOME} -executeMethod BuildDll.GenFiles
+                        """
+						//打包的使用，不要上传，平台编译自己会生成一份
+                        return
+                        sh """
+                            cd ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/lua
+                            svn add . --force
+                            svn commit ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/lua --username dgame_proj --password 123456 -m "jenkins LuaGen Commit"
+
+                            cd ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/json
+                            svn add . --force
+                            svn commit ${DLL_PROJECTHOME}/Assets/dgame/AddressableRes/json --username dgame_proj --password 123456 -m "jenkins JsonGen Commit"
+
+                        """
+                    }catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            CatchLog("${DLL_PROJECTHOME}/error_log.txt", "${CLIENT_PROJECT_PATH}安卓打包失败，地址：${BUILD_URL}", QYWX_URL)
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】安卓打包失败", QYWX_URL, BUILD_USER_ID)
+                        }
+                    }
+                }
+
+				//华佗热更流程
+				stage('BuildAndCopyHotFix')
+				{
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					// 预编译
+					try{
+						sh """
+							echo ${MPLATFORM} > ${PROJECTHOME}/platform.cf
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+							#根据参数重新设置一遍宏，解决热更脚本中再次Checkout宏没打进去问题
+							${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AutoBuild.ReSetAndroidMacroForHybirdDll -outPath ${OUT_PATH} -param "UseAssetBundle=${UseAssetBundle} ApkRemoteDebug=${ApkRemoteDebug} USE_IL2CPP=${USE_IL2CPP} ANDROID_NDK_HOME=${ANDROID_NDK_HOME} EZFUN_DEBUG=${EZFUN_DEBUG} RELEASE=${RELEASE} U3DAllowDebugging=${U3DAllowDebugging} U3DDevelopment=${U3DDevelopment} U3DConnectWithProfiler=${U3DConnectWithProfiler} USE_PocoManager=${USE_PocoManager} LoadingCostAnalysis=${LoadingCostAnalysis} IsAllLocalAB=${IsAllLocalAB}"
+							${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod HybridCLREditorHelper.BuildAndCopyHotFixAndAOTDll
+						"""
+					}
+					catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】打开Unity工程失败", QYWX_URL, BUILD_USER_ID)
+                        }
+					}
+				}
+				//设置资源分组
+				stage('MakeGroupsAssets')
+				{
+					if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					try {
+						sh """
+						${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+						${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AddressableAssetTool.MakeGroupsAssets
+						"""
+					}catch(exception_log){
+						node('mac'){
+							sh """
+							curl '$QYWX_URL' -H 'Content-Type: application/json' -d '{"msgtype": "text","text": {"content": "${ERROR_LOG_TITLE}设置资源分组失败了。", "mentioned_list":["janechen"]}}'
+							build error
+							"""
+						}
+					}
+				}
+
+                // Addressables Build
+                stage('Addressables Build')
+                {
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+                    if(NEED_BUILD_AB == "false"){
+                        return
+                    }
+					//第一次打初始AB删除对应的本地和远程文件夹
+					sh """
+						if [ "$IsInitAB" == "true" ]; then
+							echo "================开始清除老的AB====================="
+							rm -rf ${PROJECTHOME}/ServerData/Android
+							rm -rf ${PROJECTHOME}/Library/com.unity.addressables
+							echo "================开始清除老的bin====================="
+							rm -rf ${PROJECTHOME}/Assets/AddressableAssetsData/Android
+						fi
+						if [ "$IsInitAB" == "false" ]; then
+							echo "================更新的时候老的AB不能删除，有关联，不然有下载不完情况====================="
+							rm -rf ${PROJECTHOME}/Library/com.unity.addressables
+						fi
+					"""
+					
+					// 预编译
+					try{
+						sh """
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+						"""
+					}
+					catch(exception_log){
+					    sh """
+                           echo ${exception_log.toString()}
+						"""
+					}
+
+					try{
+                        sh """
+                            ${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AutoBuild.AddressabelsBuild -buildTarget android \
+							-param "IsAllLocalAB=${IsAllLocalAB} IsInitAB=${IsInitAB}"
+                        """
+					}
+					catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】执行Addressables 打包失败", QYWX_URL, BUILD_USER_ID)
+                        }
+					}
+
+                }
+
+
+				stage('Svn Commit Addressables')
+				{
+					if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+                    if(NEED_BUILD_AB == "false")
+					{
+                        return
+                    }
+
+					//将版本号写到AB文件夹下
+					sh """
+						echo ${BUILD_NUMBER} > ${PROJECTHOME}/ServerData/Android/ResVersion.txt
+					"""
+					
+					//本地打包不用传ab到服务器
+					if(IsAllLocalAB == "true")
+					{
+						return
+					}
+					bat """
+						cd ${PROJECTHOME}/Assets/AddressableAssetsData/Android
+						svn add . --force
+						svn commit ${PROJECTHOME}/Assets/AddressableAssetsData/Android --username dgame_proj --password 123456 -m "jenkins Content_State Android Commit"
+
+						cd ${PROJECTHOME}/ServerData/Android
+						svn add . --force
+						for /F "tokens=* delims=! " %%A in ('svn status ^| findstr /R "^!"') do (svn delete "%%A") 
+						svn commit ${PROJECTHOME}/ServerData/Android --username dgame_proj --password 123456 -m "jenkins ServerData Android Commit"
+					"""
+				}
+
+				stage('Zip Addressable AB')
+				{
+					if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+
+                    if(NEED_BUILD_AB == "false")
+					{
+                        return
+                    }
+					//本地打包不用传ab到服务器
+					if(IsAllLocalAB == "true")
+					{
+						return
+					}
+					sh """
+						cd ${PROJECTHOME}/ServerData/Android
+						zip -r ${UPDATE_ZIP_NAME}.zip ./
+						mv -f ${UPDATE_ZIP_NAME}.zip ${BUILDHOME}/
+					"""
+				}
+
+				//打unity Android 工程
+				stage('Main Build')
+				{
+                    if(isParallelMainProjSucc == false)
+                    {
+                        printShLog("===============Main Checkout Fail==============")
+                        return
+                    }
+					if(IsInitAB=="false")
+					{
+						return
+					}
+
+					sh """
+						echo ${MPLATFORM} > ${PROJECTHOME}/platform.cf
+						#根据当前的打包渠道，导入相应的SDK到工程目录下
+						rm -rf ${PROJECTHOME}/Assets/dgame/Script/SDK/ThirdSDK
+					"""
+					// 预编译
+					try{
+						sh """
+							${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild -buildTarget android -logFile
+						"""
+					}
+					catch(exception_log){
+                        wrap([$class: 'BuildUser'])
+                        {
+                            PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】打开Unity工程失败", QYWX_URL, BUILD_USER_ID)
+                        }
+					}
+
+					if(WINDOWS == "true")
+					{
+						// 预编译
+						try{
+							sh """
+								${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AutoBuild.PreBuild
+							"""
+						}
+						catch(exception_log){
+
+						}
+
+						sh"""
+							echo "windows AutoBuild.BuildAndroidProj"
+							echo ${PROJECTHOME}
+							echo "end"
+							${PROJECTHOME}/UnityRealtimeLog/unity_realtime_log.bat -unity ${UNITY} -projectPath ${PROJECTHOME} -executeMethod AutoBuild.BuildAndroidProj -outPath ${OUT_PATH} -param "UseAssetBundle=${UseAssetBundle} ApkRemoteDebug=${ApkRemoteDebug} USE_IL2CPP=${USE_IL2CPP} ANDROID_NDK_HOME=${ANDROID_NDK_HOME} EZFUN_DEBUG=${EZFUN_DEBUG} RELEASE=${RELEASE} U3DAllowDebugging=${U3DAllowDebugging} U3DDevelopment=${U3DDevelopment} U3DConnectWithProfiler=${U3DConnectWithProfiler} USE_PocoManager=${USE_PocoManager} LoadingCostAnalysis=${LoadingCostAnalysis} IsAllLocalAB=${IsAllLocalAB} OpenUWA=${OpenUWA} UseLuaProfiler=${UseLuaProfiler}"
+						"""
+					}else
+					{
+						sh """
+							export ANDROID_HOME=${ANDROID_HOME}
+							export ANDROID_NDK_HOME=${ANDROID_NDK_HOME}
+							export JAVA_HOME=${JAVA_HOME}
+							export CLASSPATH=.:${JAVA_HOME}/lib:${JAVA_HOME}/include
+							export PATH=${PYTHON_ENV}:${JAVA_HOME}/bin:${JAVA_HOME}/jre:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${ANDROID_NDK_HOME}:${PATH}
+
+							echo "not windows AutoBuild.BuildAndroidProj"
+							echo ${PROJECTHOME}
+							echo "end"
+
+							${UNITY} -quit -batchmode \
+							-projectPath ${PROJECTHOME} \
+							-executeMethod AutoBuild.BuildAndroidProj \
+							-outPath ${OUT_PATH} \
+							UseAssetBundle=${UseAssetBundle} \
+							ApkRemoteDebug=${ApkRemoteDebug} \
+							USE_IL2CPP=${USE_IL2CPP} \
+							ANDROID_NDK_HOME=${ANDROID_NDK_HOME} \
+							EZFUN_DEBUG=${EZFUN_DEBUG} \
+							U3DAllowDebugging=${U3DAllowDebugging} \
+							U3DDevelopment=${U3DDevelopment} \
+							U3DConnectWithProfiler=${U3DConnectWithProfiler} \
+							LoadingCostAnalysis=${LoadingCostAnalysis}  \
+							IsAllLocalAB=${IsAllLocalAB}  \
+							OpenUWA=${OpenUWA}  \
+							UseLuaProfiler=${UseLuaProfiler} -logFile
+						"""
+					}
+
+					sh """
+						echo ${PACKAGE_VERSION} > ${OUT_PATH}/unityLibrary/src/main/assets/PACKAGE_VERSION
+						echo ${BUILD_NUMBER} > ${OUT_PATH}/unityLibrary/src/main/assets/BUILD_NUMBER
+						cd ${PROJECTHOME}/tools/Android
+						python ezsdkplatform.py ${MPLATFORM} ${GAME_ID} ${RELEASE} ${VERSION_NAME} ${VERSION_CODE}
+						${UNITY} -quit -batchmode -projectPath ${PROJECTHOME} -executeMethod ezfunsdk.unity3d.EZSDKEncrypte.JenkinsEncrypteGameData -buildTarget android GameDataPath ${OUT_PATH}/unityLibrary/src/main/assets/GameData.cf
+					"""
+				}
+			},
+		)
+	}
+
+
+	stage('Gradle Build')
+	{
+        if(isParallelMainProjSucc == false)
+        {
+            printShLog("===============Main Checkout Fail==============")
+            return
+        }
+		if(IsInitAB=="false")
+		{
+			return
+		}
+
+		try
+		{
+			FINAL_APK_NAME = "dgame_" + PACKAGE_VERSION + "_" + BUILD_NUMBER + "_" + VERSION_CODE+"_" + SYMBOLS_TYPE
+
+			sh """
+				cd ${PROJECTHOME}/tools/Android
+				python build_pack.py ${MPLATFORM} ${GAME_ID} ${RELEASE}
+			"""
+
+			if(EZFUN_DEBUG == "true")
+			{
+				sh """
+					cp -f ${PROJECTHOME}/tools/Android/SDK/${MPLATFORM}/launcher/build/outputs/apk/debug/launcher-debug.apk ${BUILDHOME}/${FINAL_APK_NAME}.apk
+				"""
+			}
+			else
+			{
+				sh """
+					cp -f ${PROJECTHOME}/tools/Android/SDK/${MPLATFORM}/launcher/build/outputs/apk/release/launcher-release.apk ${BUILDHOME}/${FINAL_APK_NAME}.apk
+				"""
+			}
+		}catch(exception_log){
+			wrap([$class: 'BuildUser'])
+			{
+				PrintLog(exception_log.toString(), "${BUILD_URL}【${CLIENT_PROJECT_PATH}】安卓打包失败", QYWX_URL, BUILD_USER_ID)
+			}
+		}
+	}
+
+    //  自动上传资源包到腾讯云 与打包无关
+    stage('Upload')
+    {
+        if(isParallelMainProjSucc == false)
+        {
+            printShLog("===============Main Checkout Fail==============")
+            return
+        }
+
+        if(NEED_BUILD_AB == "false"){
+            return
+        }
+		if(IsAllLocalAB == "true"){
+			return
+		}
+		
+        
+        try
+        {
+            sh """
+                rm -rf ${PROJECTHOME}/uploadFail.json
+                cd ${PROJECTHOME}/tools
+                python UploadAddressables.py ${ADDRESSABLES_PATH} ${PACKAGE_VERSION} ${BUILD_NUMBER} Android
+            """
+            archive 'uploadFail.json'
+            wrap([$class: 'BuildUser'])
+            {
+                PushNotice("${CLIENT_PROJECT_PATH}Addressables资源已上传到腾讯云", QYWX_URL, BUILD_USER_ID)
+            }
+        }catch(all)
+        {
+            wrap([$class: 'BuildUser'])
+            {
+                PushNotice("${CLIENT_PROJECT_PATH}小包资源包上传失败！", QYWX_URL, BUILD_USER_ID)
+            }
+        }
+    }
+
+
+	stage('Final Archive')
+	{
+		sh """
+			if [ "$BUILD_BUGLY_SYMBOL" == "true" ]; then
+				cd ${PROJECTHOME}/tools
+				echo "Call upload script : bugly-upload-symbol.py"
+				python bugly-upload-symbol.py ${VERSION_NAME} ${PROJECTHOME} ${MPLATFORM}
+			fi
+		"""
+
+        if(isParallelMainProjSucc == false)
+        {
+            printShLog("===============Main Checkout Fail==============")
+            return
+        }
+		if(IsInitAB=="false")
+		{
+			wrap([$class: 'BuildUser'])
+				{
+					PushNotice("${CLIENT_PROJECT_PATH} Android热更资源包成功，地址：$BUILD_URL", QYWX_URL, BUILD_USER_ID)
+				}
+		}
+		
+		if(HotFixBuild == "true")
+		{
+			
+		}else
+		{
+            archive 'build/*.apk'
+		}
+		if(NEED_BUILD_AB == "true"&&IsAllLocalAB == "false")
+		{
+			archive 'build/*.zip'
+			sh """
+			mkdir -p ${BUILDHOME}/${BUILD_NUMBER}
+			cp ${PROJECTHOME}/ServerData/Android/catalog_CustomAlways.hash ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.hash
+			cp ${PROJECTHOME}/ServerData/Android/catalog_CustomAlways.json ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.json
+			cp ${PROJECTHOME}/Assets/AddressableAssetsData/Android/addressables_content_state.bin ${BUILDHOME}/${BUILD_NUMBER}/addressables_content_state.bin
+			"""
+		}
+		wrap([$class: 'BuildUser'])
+		{
+			// release 非热更包打完 记录一下VersionCode
+			sh"""
+			curl -d 'versioncode=${VERSION_CODE}&platform=${MPLATFORM}' -X POST http://172.16.5.233/dgame/AndroidVersionCode/AndroidRecordVersionCode.php
+			"""
+			PushNotice("${CLIENT_PROJECT_PATH}安卓打包成功，地址：$BUILD_URL", QYWX_URL, BUILD_USER_ID)
+		}
+	}
+
+	stage('Import to SVN')
+	{
+		if(NEED_BUILD_AB == "true"&&IsAllLocalAB == "false")
+		{
+			sh """
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${UPDATE_ZIP_NAME}.zip svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/android_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/${UPDATE_ZIP_NAME}.zip -m'jenkins commit hotfix res'
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.hash svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/android_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/catalog_CustomAlways.hash -m'jenkins commit catalog_CustomAlways.hash'
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.json svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/android_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/catalog_CustomAlways.json -m'jenkins commit catalog_CustomAlways.json'
+			${SVN} import --username Administrator --password test12345 ${BUILDHOME}/${BUILD_NUMBER}/catalog_CustomAlways.hash svn://svnhost1.ezfun.cn/doupo/cdn_res/dgame/android_update/${PACKAGE_VERSION}_${BUILD_NUMBER}/addressables_content_state.bin -m'jenkins commit addressables_content_state.bin'
+			"""
+		}
+	}
+}
